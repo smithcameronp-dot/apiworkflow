@@ -233,8 +233,9 @@ def update_order_status(order_id):
     data = request.json
     new_status = data["status"]
 
-    # valid statuses: pending, processing, shipped, delivered, cancelled
-    # (but we're not actually checking)
+    # validate that order status is one of: pending, processing, shipped, delivered, cancelled
+    if new_status not in ["pending", "processing", "shipped", "delivered", "cancelled"]:
+        return jsonify({"error": "invalid status"}), 400
 
     conn = get_db()
     c = conn.cursor()
