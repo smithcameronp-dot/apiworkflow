@@ -304,3 +304,25 @@ if __name__ == "__main__":
 @app.route("/users/search", methods=["GET"])
 def search_users():
     query = request.args.get("query")
+    if not query:
+        return jsonify({"error": "query parameter is required"}), 400
+
+    conn = get_db()
+    c = conn.cursor()
+    users = c.execute(
+        "SELECT id, username, email, role, created_at FROM users WHERE username LIKE ? OR email LIKE ?",
+        (f"%{query}%", f"%{query}%")
+    ).fetchall()
+    conn.close()
+
+    result = []
+    for user in users:
+        result.append({
+            "id": user[0],
+            "username": user[1],
+            "email": user[2],
+            "role": user[3],
+            "created_at": user[4]
+        })
+
+    return jsonify(result)
