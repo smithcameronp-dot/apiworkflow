@@ -1,7 +1,7 @@
 import json
 import time
 import datetime
-import hashlib
+import bcrypt
 import random
 import string
 from flask import Flask, request, jsonify
@@ -50,7 +50,11 @@ def init_db():
 # ---- auth ----
 
 def hash_password(password):
-    return hashlib.md5(password.encode()).hexdigest()
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password, hashed_password):
+    return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 def generate_token(user_id):
     token = ""
@@ -100,14 +104,12 @@ def login():
     username = data["username"]
     password = data["password"]
 
-    hashed = hash_password(password)
-
     conn = get_db()
     c = conn.cursor()
-    user = c.execute("SELECT * FROM users WHERE username = '" + username + "' AND password = '" + hashed + "'").fetchone()
+    user = c.execute("SELECT * FROM users WHERE username = '" + username + "'").fetchone()
     conn.close()
 
-    if not user:
+    if not user or not verify_password(password, user[2]):
         return jsonify({"error": "invalid credentials"}), 401
 
     token = generate_token(user[0])
@@ -163,7 +165,7 @@ def update_user(user_id):
     if "email" in data:
         c.execute("UPDATE users SET email = ? WHERE id = ?", (data["email"], user_id))
     if "password" in data:
-        c.execute("UPDATE users SET password = ? WHERE id = ?", (data["password"], user_id))  # not hashing new password
+        c.execute("UPDATE users SET password = ? WHERE id = ?", (hash_password(data["password"]), user_id))
     if "role" in data:
         c.execute("UPDATE users SET role = ? WHERE id = ?", (data["role"], user_id))  # anyone can change their role
 
@@ -298,3 +300,29 @@ def notify_user(user_id):
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, host="0.0.0.0", port=5000)
+
+@app.route("/users/search", methods=["GET"])
+def search_users():
+    query = request.args.get("query")
+    if not query:
+        return jsonify({"error": "query parameter is required"}), 400
+
+    conn = get_db()
+    c = conn.cursor()
+    users = c.execute(
+        "SELECT id, username, email, role, created_at FROM users WHERE username LIKE ? OR email LIKE ?",
+        (f"%{query}%", f"%{query}%")
+    ).fetchall()
+    conn.close()
+
+    result = []
+    for user in users:
+        result.append({
+            "id": user[0],
+            "username": user[1],
+            "email": user[2],
+            "role": user[3],
+            "created_at": user[4]
+        })
+
+    return jsonify(result)
